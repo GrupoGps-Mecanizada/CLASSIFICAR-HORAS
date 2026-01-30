@@ -1,1 +1,716 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Classificação de Extras</title>
+    <meta name="theme-color" content="#1F4E78">
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        
+        /* Select styling */
+        select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 0.7rem center; background-size: 1.5rem; padding-right: 2.5rem; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="app"></div>
 
+    <script>
+        // ============================================
+        // CONFIGURAÇÃO
+        // ============================================
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwvXnx1jKT_pLIht-fPxwrbMDG3rmXpRxpyJIfR9096yy7JjCVL4ZjhodCcZrtJ_SG_/exec';
+        
+        // ============================================
+        // HORÁRIOS DISPONÍVEIS
+        // ============================================
+        const HORARIOS = [
+            { value: '07-19', label: '07:00 às 19:00 (12h)' },
+            { value: '19-07', label: '19:00 às 07:00 (12h)' },
+            { value: '07-15', label: '07:00 às 15:00 (8h)' },
+            { value: '15-23', label: '15:00 às 23:00 (8h)' },
+            { value: '23-07', label: '23:00 às 07:00 (8h)' },
+            { value: '07-17', label: '07:00 às 17:00 (10h)' }
+        ];
+
+        // ============================================
+        // TIPOS DE EXTRA
+        // ============================================
+        const TIPOS_EXTRA = [
+            { value: 'COBRINDO', label: 'Cobrindo Ausência', needsCover: true },
+            { value: 'SOLICITACAO_CLIENTE', label: 'Solicitação do Cliente', needsCover: false },
+            { value: 'EXTRA_ESCALA', label: 'Extra Escala', needsCover: false }
+        ];
+
+        // ============================================
+        // MOTIVOS DE COBRIMENTO
+        // ============================================
+        const MOTIVOS_COBRIMENTO = [
+            'ATESTADO MEDICO',
+            'FALTA',
+            'FERIAS',
+            'AFASTADO',
+            'TREINAMENTO',
+            'FOLGA',
+            'LICENÇA',
+            'OUTRO'
+        ];
+
+        // ============================================
+        // ESTADO DA APLICAÇÃO
+        // ============================================
+        let state = {
+            view: 'login',
+            supervisor: null,
+            colaboradores: [],
+            extras: [],
+            isLoading: false,
+            editingIndex: null
+        };
+
+        // ============================================
+        // UTILITÁRIOS
+        // ============================================
+        function getCurrentDate() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            return date.toLocaleDateString('pt-BR', { 
+                weekday: 'short', 
+                day: '2-digit', 
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+
+        function getWeekday(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            const dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            return dias[date.getDay()];
+        }
+
+        // ============================================
+        // SERVIÇOS / API
+        // ============================================
+        async function login(username, password) {
+            try {
+                const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`);
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Erro no login:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function getColaboradores() {
+            try {
+                const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getColaboradores`);
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Erro ao buscar colaboradores:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function saveExtras(extras) {
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'saveExtras', extras: extras })
+                });
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Erro ao salvar extras:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
+        // ============================================
+        // LÓGICA DE NEGÓCIO
+        // ============================================
+        async function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                alert('Preencha todos os campos');
+                return;
+            }
+
+            state.isLoading = true;
+            render();
+
+            const result = await login(username, password);
+
+            if (result.success) {
+                state.supervisor = result.supervisor;
+                localStorage.setItem('supervisor', JSON.stringify(result.supervisor));
+                await loadColaboradores();
+                state.view = 'extras';
+            } else {
+                alert('Login falhou: ' + (result.error || 'Credenciais inválidas'));
+            }
+
+            state.isLoading = false;
+            render();
+        }
+
+        async function loadColaboradores() {
+            const result = await getColaboradores();
+            if (result.success) {
+                state.colaboradores = result.colaboradores;
+            }
+        }
+
+        function addExtra() {
+            const colaborador = document.getElementById('colaborador').value;
+            const data = document.getElementById('data').value;
+            const horario = document.getElementById('horario').value;
+            const tipo = document.getElementById('tipo').value;
+            const cobriu = document.getElementById('cobriu')?.value || '';
+            const motivo = document.getElementById('motivo')?.value || '';
+            const observacao = document.getElementById('observacao').value;
+
+            if (!colaborador || !data || !horario || !tipo) {
+                alert('Preencha todos os campos obrigatórios');
+                return;
+            }
+
+            const tipoInfo = TIPOS_EXTRA.find(t => t.value === tipo);
+            if (tipoInfo.needsCover && !cobriu) {
+                alert('Informe quem foi coberto');
+                return;
+            }
+
+            const colaboradorInfo = state.colaboradores.find(c => c.id === colaborador);
+            const cobriuInfo = cobriu ? state.colaboradores.find(c => c.id === cobriu) : null;
+
+            const extra = {
+                colaboradorId: colaborador,
+                colaboradorNome: colaboradorInfo.nome,
+                funcao: colaboradorInfo.funcao,
+                regime: colaboradorInfo.regime,
+                data: data,
+                horario: horario,
+                tipo: tipo,
+                cobriuId: cobriu,
+                cobriuNome: cobriuInfo ? cobriuInfo.nome : '',
+                motivo: motivo,
+                observacao: observacao,
+                supervisor: state.supervisor.nome
+            };
+
+            if (state.editingIndex !== null) {
+                state.extras[state.editingIndex] = extra;
+                state.editingIndex = null;
+            } else {
+                state.extras.push(extra);
+            }
+
+            // Limpa formulário
+            document.getElementById('extra-form').reset();
+            document.getElementById('colaborador').focus();
+            
+            render();
+        }
+
+        function editExtra(index) {
+            const extra = state.extras[index];
+            state.editingIndex = index;
+            
+            document.getElementById('colaborador').value = extra.colaboradorId;
+            document.getElementById('data').value = extra.data;
+            document.getElementById('horario').value = extra.horario;
+            document.getElementById('tipo').value = extra.tipo;
+            handleTipoChange(); // Atualiza campos condicionais
+            
+            if (extra.cobriuId) {
+                document.getElementById('cobriu').value = extra.cobriuId;
+            }
+            if (extra.motivo) {
+                document.getElementById('motivo').value = extra.motivo;
+            }
+            document.getElementById('observacao').value = extra.observacao;
+            
+            // Scroll para o formulário
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function removeExtra(index) {
+            if (confirm('Remover este registro de extra?')) {
+                state.extras.splice(index, 1);
+                render();
+            }
+        }
+
+        function cancelEdit() {
+            state.editingIndex = null;
+            document.getElementById('extra-form').reset();
+            render();
+        }
+
+        function handleTipoChange() {
+            const tipo = document.getElementById('tipo').value;
+            const tipoInfo = TIPOS_EXTRA.find(t => t.value === tipo);
+            
+            const coverFields = document.getElementById('cover-fields');
+            if (coverFields) {
+                coverFields.style.display = tipoInfo && tipoInfo.needsCover ? 'block' : 'none';
+            }
+        }
+
+        async function saveAllExtras() {
+            if (state.extras.length === 0) {
+                alert('Nenhuma extra para salvar');
+                return;
+            }
+
+            if (!confirm(`Salvar ${state.extras.length} registro(s) de extra?`)) {
+                return;
+            }
+
+            state.isLoading = true;
+            render();
+
+            const result = await saveExtras(state.extras);
+
+            if (result.success) {
+                alert(`✅ ${state.extras.length} registro(s) salvos com sucesso!`);
+                state.extras = [];
+                document.getElementById('extra-form').reset();
+            } else {
+                alert('Erro ao salvar: ' + result.error);
+            }
+
+            state.isLoading = false;
+            render();
+        }
+
+        function handleLogout() {
+            if (state.extras.length > 0) {
+                if (!confirm('Você tem extras não salvos. Deseja realmente sair?')) {
+                    return;
+                }
+            }
+            localStorage.removeItem('supervisor');
+            state.supervisor = null;
+            state.colaboradores = [];
+            state.extras = [];
+            state.view = 'login';
+            render();
+        }
+
+        // ============================================
+        // RENDERIZAÇÃO
+        // ============================================
+        function render() {
+            const app = document.getElementById('app');
+            
+            switch(state.view) {
+                case 'login':
+                    app.innerHTML = renderLogin();
+                    break;
+                case 'extras':
+                    app.innerHTML = renderExtras();
+                    setTimeout(() => {
+                        handleTipoChange(); // Configura campos condicionais após renderização
+                    }, 0);
+                    break;
+            }
+        }
+
+        function renderLogin() {
+            return `
+                <div class="min-h-screen flex flex-col justify-center items-center p-6 bg-gradient-to-br from-blue-900 to-blue-700">
+                    <div class="bg-white p-8 rounded-2xl w-full max-w-sm shadow-2xl fade-in">
+                        <div class="flex justify-center mb-6 text-blue-900">
+                            <i class="ph-fill ph-clock-afternoon text-7xl"></i>
+                        </div>
+                        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Classificação de Extras</h1>
+                        <p class="text-center text-gray-500 mb-8 text-sm">Sistema de Registro de Horas Extras</p>
+                        
+                        <form onsubmit="handleLogin(event)" class="space-y-6">
+                            <div>
+                                <label class="text-sm font-bold text-gray-700 block mb-2 uppercase">Supervisor</label>
+                                <input 
+                                    type="text" 
+                                    id="username"
+                                    class="w-full border-2 border-gray-300 rounded-lg p-4 focus:border-blue-600 outline-none text-lg"
+                                    placeholder="Digite seu nome"
+                                    ${state.isLoading ? 'disabled' : ''}
+                                    required
+                                >
+                            </div>
+                            
+                            <div>
+                                <label class="text-sm font-bold text-gray-700 block mb-2 uppercase">Senha</label>
+                                <input 
+                                    type="password" 
+                                    id="password"
+                                    class="w-full border-2 border-gray-300 rounded-lg p-4 focus:border-blue-600 outline-none text-lg"
+                                    placeholder="Digite sua senha"
+                                    ${state.isLoading ? 'disabled' : ''}
+                                    required
+                                >
+                            </div>
+                            
+                            <button 
+                                type="submit" 
+                                class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                                ${state.isLoading ? 'disabled' : ''}
+                            >
+                                ${state.isLoading ? '<i class="ph ph-spinner animate-spin text-2xl"></i> ENTRANDO...' : '<i class="ph ph-sign-in text-xl"></i> ENTRAR'}
+                            </button>
+                        </form>
+                        
+                        <div class="mt-6 text-center text-xs text-gray-400">
+                            <p>Versão 1.0 | © 2026</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderExtras() {
+            const totalExtras = state.extras.length;
+
+            return `
+                <div class="min-h-screen bg-gray-50 pb-24">
+                    <!-- Header -->
+                    <header class="bg-gradient-to-r from-blue-900 to-blue-700 text-white p-4 sticky top-0 z-30 shadow-lg">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h1 class="font-bold text-xl">Registro de Extras</h1>
+                                <p class="text-sm opacity-90">${state.supervisor.nome}</p>
+                            </div>
+                            <button onclick="handleLogout()" class="p-2 rounded-full hover:bg-white/20 transition-all">
+                                <i class="ph ph-sign-out text-2xl"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Contador -->
+                        <div class="mt-3 bg-white/10 rounded-lg p-3 backdrop-blur-sm text-center">
+                            <div class="text-3xl font-black">${totalExtras}</div>
+                            <div class="text-xs opacity-75">Extras Registrados</div>
+                        </div>
+                    </header>
+
+                    <!-- Formulário -->
+                    <main class="p-4 max-w-2xl mx-auto">
+                        <div class="bg-white rounded-xl shadow-lg p-6 mb-6 fade-in">
+                            <div class="flex items-center gap-3 mb-6">
+                                <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                                    <i class="ph-fill ph-plus-circle text-2xl text-blue-600"></i>
+                                </div>
+                                <div>
+                                    <h2 class="font-bold text-xl text-gray-800">
+                                        ${state.editingIndex !== null ? 'Editar Extra' : 'Nova Extra'}
+                                    </h2>
+                                    <p class="text-sm text-gray-500">Preencha os dados abaixo</p>
+                                </div>
+                            </div>
+
+                            <form id="extra-form" onsubmit="event.preventDefault(); addExtra();" class="space-y-4">
+                                <!-- Colaborador -->
+                                <div>
+                                    <label class="text-sm font-bold text-gray-700 block mb-2">
+                                        <i class="ph ph-user text-blue-600"></i> Colaborador *
+                                    </label>
+                                    <select 
+                                        id="colaborador"
+                                        class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
+                                        required
+                                    >
+                                        <option value="">Selecione...</option>
+                                        ${state.colaboradores.map(c => `
+                                            <option value="${c.id}">${c.nome} - ${c.funcao} (${c.regime})</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+
+                                <!-- Data e Horário -->
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-sm font-bold text-gray-700 block mb-2">
+                                            <i class="ph ph-calendar text-blue-600"></i> Data *
+                                        </label>
+                                        <input 
+                                            type="date"
+                                            id="data"
+                                            value="${getCurrentDate()}"
+                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
+                                            required
+                                        >
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="text-sm font-bold text-gray-700 block mb-2">
+                                            <i class="ph ph-clock text-blue-600"></i> Horário *
+                                        </label>
+                                        <select 
+                                            id="horario"
+                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
+                                            required
+                                        >
+                                            <option value="">Selecione...</option>
+                                            ${HORARIOS.map(h => `
+                                                <option value="${h.value}">${h.label}</option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Tipo -->
+                                <div>
+                                    <label class="text-sm font-bold text-gray-700 block mb-2">
+                                        <i class="ph ph-tag text-blue-600"></i> Tipo de Extra *
+                                    </label>
+                                    <select 
+                                        id="tipo"
+                                        onchange="handleTipoChange()"
+                                        class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
+                                        required
+                                    >
+                                        <option value="">Selecione...</option>
+                                        ${TIPOS_EXTRA.map(t => `
+                                            <option value="${t.value}">${t.label}</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+
+                                <!-- Campos Condicionais para Cobrimento -->
+                                <div id="cover-fields" style="display: none;" class="space-y-4 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-200">
+                                    <div>
+                                        <label class="text-sm font-bold text-gray-700 block mb-2">
+                                            <i class="ph ph-user-switch text-yellow-600"></i> Quem foi coberto? *
+                                        </label>
+                                        <select 
+                                            id="cobriu"
+                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
+                                        >
+                                            <option value="">Selecione...</option>
+                                            ${state.colaboradores.map(c => `
+                                                <option value="${c.id}">${c.nome}</option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="text-sm font-bold text-gray-700 block mb-2">
+                                            <i class="ph ph-info text-yellow-600"></i> Motivo do Cobrimento
+                                        </label>
+                                        <select 
+                                            id="motivo"
+                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
+                                        >
+                                            <option value="">Selecione...</option>
+                                            ${MOTIVOS_COBRIMENTO.map(m => `
+                                                <option value="${m}">${m}</option>
+                                            `).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Observação -->
+                                <div>
+                                    <label class="text-sm font-bold text-gray-700 block mb-2">
+                                        <i class="ph ph-note text-blue-600"></i> Observação
+                                    </label>
+                                    <textarea 
+                                        id="observacao"
+                                        class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none resize-none"
+                                        rows="2"
+                                        placeholder="Informações adicionais (opcional)"
+                                    ></textarea>
+                                </div>
+
+                                <!-- Botões -->
+                                <div class="flex gap-3 pt-2">
+                                    ${state.editingIndex !== null ? `
+                                        <button 
+                                            type="button"
+                                            onclick="cancelEdit()"
+                                            class="flex-1 bg-gray-500 text-white font-bold py-3 rounded-lg hover:bg-gray-600 transition-all"
+                                        >
+                                            <i class="ph ph-x"></i> Cancelar
+                                        </button>
+                                    ` : ''}
+                                    <button 
+                                        type="submit"
+                                        class="flex-1 bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-all shadow-lg"
+                                    >
+                                        <i class="ph ph-${state.editingIndex !== null ? 'check' : 'plus'}"></i> 
+                                        ${state.editingIndex !== null ? 'Atualizar' : 'Adicionar'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Lista de Extras -->
+                        ${state.extras.length > 0 ? `
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="font-bold text-lg text-gray-800">
+                                        <i class="ph-fill ph-list text-blue-600"></i> 
+                                        Extras Registrados (${state.extras.length})
+                                    </h3>
+                                </div>
+                                
+                                ${state.extras.map((extra, index) => renderExtraCard(extra, index)).join('')}
+                            </div>
+                        ` : `
+                            <div class="text-center py-12 bg-white rounded-xl shadow-sm">
+                                <i class="ph ph-clipboard-text text-6xl text-gray-300 mb-4"></i>
+                                <p class="text-gray-500">Nenhuma extra registrada ainda</p>
+                                <p class="text-sm text-gray-400 mt-2">Preencha o formulário acima para começar</p>
+                            </div>
+                        `}
+                    </main>
+
+                    <!-- Fixed Bottom Bar -->
+                    ${state.extras.length > 0 ? `
+                        <div class="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 p-4 shadow-lg">
+                            <button 
+                                onclick="saveAllExtras()"
+                                ${state.isLoading ? 'disabled' : ''}
+                                class="w-full max-w-2xl mx-auto block bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                            >
+                                ${state.isLoading ? '<i class="ph ph-spinner animate-spin text-2xl"></i> SALVANDO...' : `<i class="ph ph-floppy-disk text-2xl"></i> SALVAR ${state.extras.length} REGISTRO(S)`}
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderExtraCard(extra, index) {
+            const tipoInfo = TIPOS_EXTRA.find(t => t.value === extra.tipo);
+            const horarioInfo = HORARIOS.find(h => h.value === extra.horario);
+            
+            return `
+                <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-blue-500 slide-up">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                            <h4 class="font-bold text-lg text-gray-800 mb-1">${extra.colaboradorNome}</h4>
+                            <div class="flex gap-2 flex-wrap mb-2">
+                                <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
+                                    ${extra.funcao}
+                                </span>
+                                <span class="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold">
+                                    ${extra.regime}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button 
+                                onclick="editExtra(${index})"
+                                class="p-2 rounded-lg bg-yellow-100 text-yellow-700 hover:bg-yellow-200 transition-all"
+                            >
+                                <i class="ph ph-pencil text-lg"></i>
+                            </button>
+                            <button 
+                                onclick="removeExtra(${index})"
+                                class="p-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-all"
+                            >
+                                <i class="ph ph-trash text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="flex items-center gap-2">
+                            <i class="ph-fill ph-calendar text-blue-600"></i>
+                            <div>
+                                <div class="text-gray-500 text-xs">Data</div>
+                                <div class="font-semibold">${formatDate(extra.data)}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center gap-2">
+                            <i class="ph-fill ph-clock text-blue-600"></i>
+                            <div>
+                                <div class="text-gray-500 text-xs">Horário</div>
+                                <div class="font-semibold">${horarioInfo.label}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <div class="flex items-start gap-2 mb-2">
+                            <i class="ph-fill ph-tag text-green-600 mt-1"></i>
+                            <div class="flex-1">
+                                <div class="text-gray-500 text-xs">Tipo</div>
+                                <div class="font-semibold text-green-700">${tipoInfo.label}</div>
+                            </div>
+                        </div>
+                        
+                        ${extra.cobriuNome ? `
+                            <div class="flex items-start gap-2 mb-2 bg-yellow-50 p-2 rounded-lg">
+                                <i class="ph-fill ph-user-switch text-yellow-600 mt-1"></i>
+                                <div class="flex-1">
+                                    <div class="text-gray-500 text-xs">Cobriu</div>
+                                    <div class="font-semibold">${extra.cobriuNome}</div>
+                                    ${extra.motivo ? `<div class="text-xs text-gray-600 mt-1">Motivo: ${extra.motivo}</div>` : ''}
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        ${extra.observacao ? `
+                            <div class="flex items-start gap-2 mt-2">
+                                <i class="ph-fill ph-note text-gray-600 mt-1"></i>
+                                <div class="flex-1">
+                                    <div class="text-gray-500 text-xs">Observação</div>
+                                    <div class="text-sm text-gray-700">${extra.observacao}</div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // INICIALIZAÇÃO
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedSupervisor = localStorage.getItem('supervisor');
+            if (savedSupervisor) {
+                state.supervisor = JSON.parse(savedSupervisor);
+                loadColaboradores().then(() => {
+                    state.view = 'extras';
+                    render();
+                });
+            } else {
+                render();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -3,1001 +3,845 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Classificação de Extras</title>
-    <meta name="theme-color" content="#1F4E78">
-    
-    <!-- Phosphor Icons -->
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <title>Relatório de Turno Inteligente</title>
+    <meta name="theme-color" content="#1e40af">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
     <style>
-        body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
-        .animate-spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; }
         
-        .fade-in { animation: fadeIn 0.3s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        
+        /* Animações */
+        .fade-in { animation: fadeIn 0.3s ease-out; }
         .slide-up { animation: slideUp 0.3s ease-out; }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
-        
-        /* Autocomplete dropdown */
+        /* Autocomplete Customizado */
+        .autocomplete-wrapper { position: relative; }
         .autocomplete-dropdown {
             position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
             background: white;
-            border: 2px solid #3B82F6;
+            border: 1px solid #e5e7eb;
             border-radius: 0.5rem;
-            max-height: 300px;
+            margin-top: 4px;
+            max-height: 250px;
             overflow-y: auto;
-            z-index: 1000;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            z-index: 50;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        
         .autocomplete-item {
-            padding: 12px 16px;
+            padding: 10px 16px;
             cursor: pointer;
-            border-bottom: 1px solid #E5E7EB;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background 0.2s;
         }
+        .autocomplete-item:hover, .autocomplete-item.selected { background-color: #eff6ff; }
+        .autocomplete-item:last-child { border-bottom: none; }
         
-        .autocomplete-item:hover, .autocomplete-item.selected {
-            background: #DBEAFE;
-        }
-        
-        .autocomplete-item:last-child {
-            border-bottom: none;
-        }
-        
-        /* Print styles */
-        @media print {
-            body { background: white; }
-            .no-print { display: none !important; }
-            .print-container { 
-                page-break-inside: avoid;
-                margin: 10px;
-            }
-        }
+        /* Scrollbar suave */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .spinner { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="bg-gray-100 font-sans">
+<body>
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="fixed inset-0 bg-black/50 z-[9999] hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white p-6 rounded-2xl shadow-2xl text-center">
+            <i class="ph ph-spinner ph-spin text-4xl text-blue-600 mb-2"></i>
+            <p class="text-gray-700 font-semibold" id="loading-text">Carregando...</p>
+        </div>
+    </div>
+
+    <!-- App Container -->
     <div id="app"></div>
 
     <script>
         // ============================================
-        // CONFIGURAÇÃO
+        // CONFIGURAÇÃO & ESTADO
         // ============================================
-        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwcurfCG2KDJRwjoRQc4e9tv8kFrEgdcOiFcJw924Gi0NApPMaoyvf9YWtm-UVS9k4X/exec';
+        // IMPORTANTE: Substitua pela URL do seu Script Google
+        const API_URL = 'https://script.google.com/macros/s/AKfycbwxGAQlf6699osRjUSenW7E9Ca-GXbU1-s67UVWVmfpKy6cPQnTJeSh14Z6uapFp8P0Cg/exec';
         
-        // ============================================
-        // HORÁRIOS DISPONÍVEIS
-        // ============================================
-        const HORARIOS = [
-            { value: '07-19', label: '07:00 às 19:00 (12h)' },
-            { value: '19-07', label: '19:00 às 07:00 (12h)' },
-            { value: '07-15', label: '07:00 às 15:00 (8h)' },
-            { value: '15-23', label: '15:00 às 23:00 (8h)' },
-            { value: '23-07', label: '23:00 às 07:00 (8h)' },
-            { value: '07-17', label: '07:00 às 17:00 (10h)' }
-        ];
-
-        // ============================================
-        // TIPOS DE EXTRA
-        // ============================================
-        const TIPOS_EXTRA = [
-            { value: 'COBRINDO', label: 'Cobrindo Ausência', needsCover: true },
-            { value: 'SOLICITACAO_CLIENTE', label: 'Solicitação do Cliente', needsCover: false },
-            { value: 'OUTRO', label: 'Outro', needsCover: false, needsCustom: true }
-        ];
-
-        // ============================================
-        // MOTIVOS DE COBRIMENTO
-        // ============================================
-        const MOTIVOS_COBRIMENTO = [
-            'ATESTADO MEDICO',
-            'FALTA',
-            'FERIAS',
-            'AFASTADO',
-            'TREINAMENTO',
-            'FOLGA',
-            'LICENÇA',
-            'OUTRO'
-        ];
-
-        // ============================================
-        // ESTADO DA APLICAÇÃO
-        // ============================================
+        const CACHE_KEY = 'turno_app_cache_v2';
+        
         let state = {
             view: 'login',
-            supervisor: null,
-            colaboradores: [],
-            extras: [],
-            isLoading: false,
-            editingIndex: null,
-            autocomplete: {
-                active: null,
-                selectedIndex: -1,
-                filteredItems: []
-            }
+            user: null,
+            equipamentos: [],
+            colaboradores: [], // Cache local para busca rápida
+            vagas: [],
+            currentRelatorio: null,
+            relatoriosHistorico: [],
+            dashboardData: null,
+            sidebarOpen: false
         };
 
         // ============================================
-        // UTILITÁRIOS
+        // CORE FUNCTIONS
         // ============================================
-        function getCurrentDate() {
-            return new Date().toISOString().split('T')[0];
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedUser = localStorage.getItem('user_session');
+            if (savedUser) {
+                state.user = JSON.parse(savedUser);
+                initApp();
+            } else {
+                renderLogin();
+            }
+        });
+
+        async function initApp() {
+            showLoading(true, 'Sincronizando dados...');
+            try {
+                // Carregamento paralelo para velocidade
+                const [eqRes, colRes, vagRes] = await Promise.all([
+                    fetchAPI('getEquipamentos', { supervisor: state.user.nome }),
+                    fetchAPI('getColaboradores', { supervisor: state.user.nome }),
+                    fetchAPI('getVagas')
+                ]);
+
+                if (eqRes.success) state.equipamentos = eqRes.equipamentos;
+                if (colRes.success) state.colaboradores = colRes.colaboradores;
+                if (vagRes.success) state.vagas = vagRes.vagas;
+
+                navigateTo('novo-relatorio');
+            } catch (e) {
+                showToast('Erro ao carregar dados iniciais', 'error');
+                console.error(e);
+            } finally {
+                showLoading(false);
+            }
         }
 
-        function formatDate(dateStr) {
-            const date = new Date(dateStr + 'T00:00:00');
-            return date.toLocaleDateString('pt-BR', { 
-                weekday: 'short', 
-                day: '2-digit', 
-                month: '2-digit',
-                year: 'numeric'
-            });
-        }
-
-        function getWeekday(dateStr) {
-            const date = new Date(dateStr + 'T00:00:00');
-            const dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-            return dias[date.getDay()];
+        // Navegação
+        function navigateTo(view) {
+            state.view = view;
+            state.sidebarOpen = false; // Fecha sidebar no mobile
+            
+            if (view === 'novo-relatorio') renderNovoRelatorio();
+            else if (view === 'historico') renderHistorico();
+            else if (view === 'dashboard') renderDashboard();
         }
 
         // ============================================
-        // AUTOCOMPLETE
+        // AUTOCOMPLETE LOGIC (MOTOR DE BUSCA)
         // ============================================
-        function initAutocomplete(inputId) {
+        function setupAutocomplete(inputId, dataList, onSelect) {
             const input = document.getElementById(inputId);
             if (!input) return;
 
-            input.addEventListener('input', (e) => handleAutocompleteInput(inputId, e.target.value));
-            input.addEventListener('focus', (e) => handleAutocompleteInput(inputId, e.target.value));
-            input.addEventListener('keydown', (e) => handleAutocompleteKeydown(inputId, e));
-            
-            // Fecha autocomplete ao clicar fora
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest(`#${inputId}`) && !e.target.closest('.autocomplete-dropdown')) {
-                    closeAutocomplete(inputId);
+            let currentFocus = -1;
+
+            // Criar wrapper se não existir
+            if (!input.parentNode.classList.contains('autocomplete-wrapper')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'autocomplete-wrapper';
+                input.parentNode.insertBefore(wrapper, input);
+                wrapper.appendChild(input);
+            }
+
+            input.addEventListener('input', function(e) {
+                const val = this.value;
+                closeAllLists();
+                if (!val) return false;
+                
+                currentFocus = -1;
+                const list = document.createElement('div');
+                list.setAttribute('id', this.id + 'autocomplete-list');
+                list.setAttribute('class', 'autocomplete-dropdown');
+                this.parentNode.appendChild(list);
+
+                // Filtragem Inteligente (Nome ou Função)
+                const matches = dataList.filter(item => 
+                    item.nome.toUpperCase().includes(val.toUpperCase()) || 
+                    (item.funcao && item.funcao.toUpperCase().includes(val.toUpperCase()))
+                ).slice(0, 8); // Limita a 8 resultados para performance
+
+                if(matches.length === 0) {
+                    const noResult = document.createElement('div');
+                    noResult.className = 'autocomplete-item text-gray-400 cursor-default';
+                    noResult.innerHTML = 'Nenhum resultado encontrado';
+                    list.appendChild(noResult);
                 }
-            });
-        }
 
-        function handleAutocompleteInput(inputId, value) {
-            const searchTerm = value.toLowerCase().trim();
-            
-            if (searchTerm.length < 2) {
-                closeAutocomplete(inputId);
-                return;
-            }
-
-            const filtered = state.colaboradores.filter(c => {
-                const nome = c.nome.toLowerCase();
-                const id = c.id.toLowerCase();
-                return nome.includes(searchTerm) || id.includes(searchTerm);
-            });
-
-            state.autocomplete.active = inputId;
-            state.autocomplete.filteredItems = filtered;
-            state.autocomplete.selectedIndex = -1;
-
-            showAutocomplete(inputId, filtered);
-        }
-
-        function showAutocomplete(inputId, items) {
-            const input = document.getElementById(inputId);
-            const existingDropdown = document.getElementById(`${inputId}-dropdown`);
-            
-            if (existingDropdown) {
-                existingDropdown.remove();
-            }
-
-            if (items.length === 0) return;
-
-            const dropdown = document.createElement('div');
-            dropdown.id = `${inputId}-dropdown`;
-            dropdown.className = 'autocomplete-dropdown';
-            dropdown.style.width = input.offsetWidth + 'px';
-            dropdown.style.top = (input.offsetTop + input.offsetHeight + 4) + 'px';
-            dropdown.style.left = input.offsetLeft + 'px';
-
-            items.forEach((item, index) => {
-                const div = document.createElement('div');
-                div.className = 'autocomplete-item';
-                div.innerHTML = `
-                    <div class="font-semibold text-gray-800">${item.nome}</div>
-                    <div class="text-xs text-gray-500">${item.funcao} • ${item.regime}</div>
-                `;
-                div.onclick = () => selectAutocompleteItem(inputId, item);
-                dropdown.appendChild(div);
-            });
-
-            input.parentElement.style.position = 'relative';
-            input.parentElement.appendChild(dropdown);
-        }
-
-        function selectAutocompleteItem(inputId, item) {
-            const input = document.getElementById(inputId);
-            input.value = item.nome;
-            input.dataset.selectedId = item.id;
-            input.dataset.selectedNome = item.nome;
-            input.dataset.funcao = item.funcao;
-            input.dataset.regime = item.regime;
-            closeAutocomplete(inputId);
-        }
-
-        function handleAutocompleteKeydown(inputId, e) {
-            const dropdown = document.getElementById(`${inputId}-dropdown`);
-            if (!dropdown) return;
-
-            const items = dropdown.querySelectorAll('.autocomplete-item');
-            if (items.length === 0) return;
-
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                state.autocomplete.selectedIndex = Math.min(state.autocomplete.selectedIndex + 1, items.length - 1);
-                updateAutocompleteSelection(items);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                state.autocomplete.selectedIndex = Math.max(state.autocomplete.selectedIndex - 1, -1);
-                updateAutocompleteSelection(items);
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (state.autocomplete.selectedIndex >= 0) {
-                    const selectedItem = state.autocomplete.filteredItems[state.autocomplete.selectedIndex];
-                    selectAutocompleteItem(inputId, selectedItem);
-                }
-            } else if (e.key === 'Escape') {
-                closeAutocomplete(inputId);
-            }
-        }
-
-        function updateAutocompleteSelection(items) {
-            items.forEach((item, index) => {
-                item.classList.toggle('selected', index === state.autocomplete.selectedIndex);
-                if (index === state.autocomplete.selectedIndex) {
-                    item.scrollIntoView({ block: 'nearest' });
-                }
-            });
-        }
-
-        function closeAutocomplete(inputId) {
-            const dropdown = document.getElementById(`${inputId}-dropdown`);
-            if (dropdown) {
-                dropdown.remove();
-            }
-            state.autocomplete.active = null;
-            state.autocomplete.selectedIndex = -1;
-        }
-
-        // ============================================
-        // SERVIÇOS / API
-        // ============================================
-        async function login(username) {
-            try {
-                const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=login&username=${encodeURIComponent(username)}`);
-                const data = await response.json();
-                return data;
-            } catch (error) {
-                console.error('Erro no login:', error);
-                return { success: false, error: error.message };
-            }
-        }
-
-        async function getColaboradores() {
-            try {
-                const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getColaboradores`);
-                const data = await response.json();
-                return data;
-            } catch (error) {
-                console.error('Erro ao buscar colaboradores:', error);
-                return { success: false, error: error.message };
-            }
-        }
-
-        async function saveExtras(extras) {
-            try {
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: 'saveExtras', extras: extras })
+                matches.forEach(item => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'autocomplete-item';
+                    itemDiv.innerHTML = `
+                        <div class="font-semibold text-gray-800">${item.nome}</div>
+                        <div class="text-xs text-gray-500">${item.funcao || 'N/A'} • ${item.regime || 'N/A'}</div>
+                    `;
+                    itemDiv.addEventListener('click', function() {
+                        input.value = item.nome;
+                        if (onSelect) onSelect(item);
+                        closeAllLists();
+                    });
+                    list.appendChild(itemDiv);
                 });
-                const data = await response.json();
-                return data;
-            } catch (error) {
-                console.error('Erro ao salvar extras:', error);
-                return { success: false, error: error.message };
+            });
+
+            input.addEventListener('keydown', function(e) {
+                let x = document.getElementById(this.id + 'autocomplete-list');
+                if (x) x = x.getElementsByTagName('div');
+                if (e.keyCode == 40) { // Down
+                    currentFocus++;
+                    addActive(x);
+                } else if (e.keyCode == 38) { // Up
+                    currentFocus--;
+                    addActive(x);
+                } else if (e.keyCode == 13) { // Enter
+                    e.preventDefault();
+                    if (currentFocus > -1) {
+                        if (x) x[currentFocus].click();
+                    }
+                }
+            });
+
+            function addActive(x) {
+                if (!x) return false;
+                removeActive(x);
+                if (currentFocus >= x.length) currentFocus = 0;
+                if (currentFocus < 0) currentFocus = (x.length - 1);
+                x[currentFocus].classList.add('selected');
+                x[currentFocus].scrollIntoView({ block: 'nearest' });
             }
+
+            function removeActive(x) {
+                for (let i = 0; i < x.length; i++) {
+                    x[i].classList.remove('selected');
+                }
+            }
+
+            function closeAllLists(elmnt) {
+                const x = document.getElementsByClassName('autocomplete-dropdown');
+                for (let i = 0; i < x.length; i++) {
+                    if (elmnt != x[i] && elmnt != input) {
+                        x[i].parentNode.removeChild(x[i]);
+                    }
+                }
+            }
+
+            document.addEventListener('click', function (e) {
+                closeAllLists(e.target);
+            });
         }
 
         // ============================================
-        // LÓGICA DE NEGÓCIO
+        // LÓGICA DE NEGÓCIO - RELATÓRIO
         // ============================================
-        async function handleLogin(e) {
-            e.preventDefault();
-            const username = document.getElementById('username').value.trim();
-
-            if (!username) {
-                alert('Digite o nome do supervisor');
-                return;
-            }
-
-            state.isLoading = true;
-            render();
-
-            const result = await login(username);
-
-            if (result.success) {
-                state.supervisor = result.supervisor;
-                localStorage.setItem('supervisor', JSON.stringify(result.supervisor));
-                await loadColaboradores();
-                state.view = 'extras';
-            } else {
-                alert('Login falhou: ' + (result.error || 'Supervisor não encontrado'));
-            }
-
-            state.isLoading = false;
-            render();
-        }
-
-        async function loadColaboradores() {
-            const result = await getColaboradores();
-            if (result.success) {
-                state.colaboradores = result.colaboradores;
-            }
-        }
-
-        function addExtra() {
-            const colaboradorInput = document.getElementById('colaborador');
-            const data = document.getElementById('data').value;
-            const horario = document.getElementById('horario').value;
-            const tipo = document.getElementById('tipo').value;
-            const tipoOutro = document.getElementById('tipo-outro')?.value || '';
-            const cobriuInput = document.getElementById('cobriu');
-            const motivo = document.getElementById('motivo')?.value || '';
-            const motivoOutro = document.getElementById('motivo-outro')?.value || '';
-            const observacao = document.getElementById('observacao').value;
-
-            // Validações
-            if (!colaboradorInput.dataset.selectedId || !data || !horario || !tipo) {
-                alert('Preencha todos os campos obrigatórios');
-                return;
-            }
-
-            const tipoInfo = TIPOS_EXTRA.find(t => t.value === tipo);
-            
-            // Validação para tipo OUTRO
-            if (tipoInfo.needsCustom && !tipoOutro.trim()) {
-                alert('Especifique o tipo de extra');
-                return;
-            }
-
-            // Validação para cobrimento
-            if (tipoInfo.needsCover && !cobriuInput?.dataset.selectedId) {
-                alert('Informe quem foi coberto');
-                return;
-            }
-
-            // Validação para motivo OUTRO
-            if (motivo === 'OUTRO' && !motivoOutro.trim()) {
-                alert('Especifique o motivo do cobrimento');
-                return;
-            }
-
-            const extra = {
-                colaboradorId: colaboradorInput.dataset.selectedId,
-                colaboradorNome: colaboradorInput.dataset.selectedNome,
-                funcao: colaboradorInput.dataset.funcao,
-                regime: colaboradorInput.dataset.regime,
-                data: data,
-                horario: horario,
-                tipo: tipo === 'OUTRO' ? tipoOutro : tipo,
-                cobriuId: cobriuInput?.dataset.selectedId || '',
-                cobriuNome: cobriuInput?.dataset.selectedNome || '',
-                motivo: motivo === 'OUTRO' ? motivoOutro : motivo,
-                observacao: observacao,
-                supervisor: state.supervisor.nome
+        
+        function iniciarNovoRelatorio() {
+            state.currentRelatorio = {
+                id: `REL-${Date.now()}`,
+                supervisor: state.user.nome,
+                letraTurno: state.user.letraTurno || '',
+                data: new Date().toISOString().split('T')[0],
+                equipamentosOperando: [],
+                observacoes: '',
+                criadoEm: new Date().toISOString()
             };
-
-            if (state.editingIndex !== null) {
-                state.extras[state.editingIndex] = extra;
-                state.editingIndex = null;
-            } else {
-                state.extras.push(extra);
-            }
-
-            // Limpa formulário
-            document.getElementById('extra-form').reset();
-            delete colaboradorInput.dataset.selectedId;
-            delete colaboradorInput.dataset.selectedNome;
-            delete colaboradorInput.dataset.funcao;
-            delete colaboradorInput.dataset.regime;
-            if (cobriuInput) {
-                delete cobriuInput.dataset.selectedId;
-                delete cobriuInput.dataset.selectedNome;
-            }
-            
-            colaboradorInput.focus();
-            render();
+            // Adiciona um equipamento padrão
+            adicionarEquipamento(); 
+            renderNovoRelatorio();
         }
 
-        function editExtra(index) {
-            const extra = state.extras[index];
-            state.editingIndex = index;
+        function adicionarEquipamento() {
+            if (!state.currentRelatorio) iniciarNovoRelatorio();
             
-            const colaboradorInput = document.getElementById('colaborador');
-            colaboradorInput.value = extra.colaboradorNome;
-            colaboradorInput.dataset.selectedId = extra.colaboradorId;
-            colaboradorInput.dataset.selectedNome = extra.colaboradorNome;
-            colaboradorInput.dataset.funcao = extra.funcao;
-            colaboradorInput.dataset.regime = extra.regime;
-            
-            document.getElementById('data').value = extra.data;
-            document.getElementById('horario').value = extra.horario;
-            
-            // Verifica se é tipo customizado
-            const tipoExists = TIPOS_EXTRA.find(t => t.value === extra.tipo);
-            if (tipoExists) {
-                document.getElementById('tipo').value = extra.tipo;
-            } else {
-                document.getElementById('tipo').value = 'OUTRO';
-                setTimeout(() => {
-                    document.getElementById('tipo-outro').value = extra.tipo;
-                }, 100);
+            state.currentRelatorio.equipamentosOperando.push({
+                _tempId: Date.now(), // ID para controle de DOM
+                equipamento: '',
+                vaga: '',
+                area: '',
+                motorista: '',
+                operadores: '',
+                trocas: []
+            });
+            renderNovoRelatorio();
+        }
+
+        function removerEquipamento(index) {
+            if(confirm("Remover este equipamento?")) {
+                state.currentRelatorio.equipamentosOperando.splice(index, 1);
+                renderNovoRelatorio();
             }
+        }
+
+        function adicionarTroca(equipIndex) {
+            const equip = state.currentRelatorio.equipamentosOperando[equipIndex];
+            equip.trocas.push({
+                motivo: '',
+                equipamentoNovo: '',
+                dataHora: new Date().toISOString().slice(0, 16),
+                observacao: ''
+            });
+            renderNovoRelatorio();
+        }
+
+        function removerTroca(equipIndex, trocaIndex) {
+            state.currentRelatorio.equipamentosOperando[equipIndex].trocas.splice(trocaIndex, 1);
+            renderNovoRelatorio();
+        }
+
+        async function salvarRelatorio() {
+            // Validações
+            const rel = state.currentRelatorio;
+            if(!rel.equipamentosOperando.length) return showToast("Adicione ao menos um equipamento", "warning");
             
-            handleTipoChange();
-            
-            if (extra.cobriuId) {
-                const cobriuInput = document.getElementById('cobriu');
-                cobriuInput.value = extra.cobriuNome;
-                cobriuInput.dataset.selectedId = extra.cobriuId;
-                cobriuInput.dataset.selectedNome = extra.cobriuNome;
+            for(let eq of rel.equipamentosOperando) {
+                if(!eq.equipamento || !eq.vaga || !eq.area) return showToast("Preencha os campos obrigatórios (*)", "warning");
             }
-            
-            if (extra.motivo) {
-                const motivoExists = MOTIVOS_COBRIMENTO.includes(extra.motivo);
-                if (motivoExists) {
-                    document.getElementById('motivo').value = extra.motivo;
+
+            if(!confirm("Confirmar o envio do relatório?")) return;
+
+            showLoading(true, "Salvando relatório...");
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'saveRelatorio', relatorio: rel })
+                });
+                const json = await res.json();
+                
+                if(json.success) {
+                    showToast("Relatório salvo com sucesso!", "success");
+                    state.currentRelatorio = null;
+                    navigateTo('historico');
                 } else {
-                    document.getElementById('motivo').value = 'OUTRO';
-                    setTimeout(() => {
-                        document.getElementById('motivo-outro').value = extra.motivo;
-                    }, 100);
+                    throw new Error(json.error);
                 }
-                handleMotivoChange();
+            } catch(e) {
+                showToast("Erro ao salvar: " + e.message, "error");
+            } finally {
+                showLoading(false);
             }
-            
-            document.getElementById('observacao').value = extra.observacao;
-            
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        function removeExtra(index) {
-            if (confirm('Remover este registro de extra?')) {
-                state.extras.splice(index, 1);
-                render();
-            }
-        }
-
-        function cancelEdit() {
-            state.editingIndex = null;
-            document.getElementById('extra-form').reset();
-            const colaboradorInput = document.getElementById('colaborador');
-            delete colaboradorInput.dataset.selectedId;
-            delete colaboradorInput.dataset.selectedNome;
-            delete colaboradorInput.dataset.funcao;
-            delete colaboradorInput.dataset.regime;
-            render();
-        }
-
-        function handleTipoChange() {
-            const tipo = document.getElementById('tipo').value;
-            const tipoInfo = TIPOS_EXTRA.find(t => t.value === tipo);
-            
-            const coverFields = document.getElementById('cover-fields');
-            const customTipoField = document.getElementById('custom-tipo-field');
-            
-            if (coverFields) {
-                coverFields.style.display = tipoInfo && tipoInfo.needsCover ? 'block' : 'none';
-            }
-            
-            if (customTipoField) {
-                customTipoField.style.display = tipoInfo && tipoInfo.needsCustom ? 'block' : 'none';
-            }
-        }
-
-        function handleMotivoChange() {
-            const motivo = document.getElementById('motivo')?.value;
-            const customMotivoField = document.getElementById('custom-motivo-field');
-            
-            if (customMotivoField) {
-                customMotivoField.style.display = motivo === 'OUTRO' ? 'block' : 'none';
-            }
-        }
-
-        async function saveAllExtras() {
-            if (state.extras.length === 0) {
-                alert('Nenhuma extra para salvar');
-                return;
-            }
-
-            if (!confirm(`Salvar ${state.extras.length} registro(s) de extra?`)) {
-                return;
-            }
-
-            state.isLoading = true;
-            render();
-
-            const result = await saveExtras(state.extras);
-
-            if (result.success) {
-                alert(`✅ ${state.extras.length} registro(s) salvos com sucesso!`);
-                state.extras = [];
-                document.getElementById('extra-form').reset();
-            } else {
-                alert('Erro ao salvar: ' + result.error);
-            }
-
-            state.isLoading = false;
-            render();
-        }
-
-        function handleLogout() {
-            if (state.extras.length > 0) {
-                if (!confirm('Você tem extras não salvos. Deseja realmente sair?')) {
-                    return;
-                }
-            }
-            localStorage.removeItem('supervisor');
-            state.supervisor = null;
-            state.colaboradores = [];
-            state.extras = [];
-            state.view = 'login';
-            render();
-        }
-
-        function copyExtrasToClipboard() {
-            let text = `📋 *REGISTRO DE EXTRAS*\n`;
-            text += `👤 Supervisor: ${state.supervisor.nome}\n`;
-            text += `📅 Data: ${formatDate(getCurrentDate())}\n`;
-            text += `📊 Total: ${state.extras.length} registro(s)\n\n`;
-            text += `${'='.repeat(40)}\n\n`;
-
-            state.extras.forEach((extra, index) => {
-                text += `*#${index + 1} - ${extra.colaboradorNome}*\n`;
-                text += `├ Função: ${extra.funcao} | Regime: ${extra.regime}\n`;
-                text += `├ Data: ${formatDate(extra.data)}\n`;
-                text += `├ Horário: ${HORARIOS.find(h => h.value === extra.horario)?.label || extra.horario}\n`;
-                text += `├ Tipo: ${extra.tipo}\n`;
-                if (extra.cobriuNome) {
-                    text += `├ Cobriu: ${extra.cobriuNome}\n`;
-                    if (extra.motivo) text += `├ Motivo: ${extra.motivo}\n`;
-                }
-                if (extra.observacao) {
-                    text += `└ Obs: ${extra.observacao}\n`;
-                }
-                text += `\n`;
-            });
-
-            navigator.clipboard.writeText(text).then(() => {
-                alert('✅ Relatório copiado! Cole no WhatsApp.');
-            }).catch(() => {
-                alert('❌ Erro ao copiar. Tente novamente.');
-            });
         }
 
         // ============================================
         // RENDERIZAÇÃO
         // ============================================
-        function render() {
-            const app = document.getElementById('app');
-            
-            switch(state.view) {
-                case 'login':
-                    app.innerHTML = renderLogin();
-                    break;
-                case 'extras':
-                    app.innerHTML = renderExtras();
-                    setTimeout(() => {
-                        initAutocomplete('colaborador');
-                        initAutocomplete('cobriu');
-                        handleTipoChange();
-                    }, 0);
-                    break;
-            }
-        }
 
         function renderLogin() {
-            return `
-                <div class="min-h-screen flex flex-col justify-center items-center p-6 bg-gradient-to-br from-blue-900 to-blue-700">
-                    <div class="bg-white p-8 rounded-2xl w-full max-w-sm shadow-2xl fade-in">
-                        <div class="flex justify-center mb-6 text-blue-900">
-                            <i class="ph-fill ph-clock-afternoon text-7xl"></i>
-                        </div>
-                        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Classificação de Extras</h1>
-                        <p class="text-center text-gray-500 mb-8 text-sm">Sistema de Registro de Horas Extras</p>
-                        
-                        <form onsubmit="handleLogin(event)" class="space-y-6">
-                            <div>
-                                <label class="text-sm font-bold text-gray-700 block mb-2 uppercase">Supervisor</label>
-                                <input 
-                                    type="text" 
-                                    id="username"
-                                    class="w-full border-2 border-gray-300 rounded-lg p-4 focus:border-blue-600 outline-none text-lg"
-                                    placeholder="Digite seu nome"
-                                    ${state.isLoading ? 'disabled' : ''}
-                                    autocomplete="off"
-                                    required
-                                >
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-blue-900 to-blue-700">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 fade-in">
+                        <div class="text-center mb-8">
+                            <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="ph-fill ph-clipboard-text text-4xl text-blue-600"></i>
                             </div>
-                            
-                            <button 
-                                type="submit" 
-                                class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
-                                ${state.isLoading ? 'disabled' : ''}
-                            >
-                                ${state.isLoading ? '<i class="ph ph-spinner animate-spin text-2xl"></i> ENTRANDO...' : '<i class="ph ph-sign-in text-xl"></i> ENTRAR'}
+                            <h1 class="text-2xl font-bold text-gray-800">Relatório de Turno</h1>
+                            <p class="text-gray-500 text-sm">Acesso do Supervisor</p>
+                        </div>
+                        <form onsubmit="handleLogin(event)" class="space-y-5">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Usuário</label>
+                                <div class="relative">
+                                    <i class="ph ph-user absolute left-3 top-3.5 text-gray-400 text-lg"></i>
+                                    <input type="text" id="username" class="w-full pl-10 border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Seu usuário" required>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Senha</label>
+                                <div class="relative">
+                                    <i class="ph ph-lock absolute left-3 top-3.5 text-gray-400 text-lg"></i>
+                                    <input type="password" id="password" class="w-full pl-10 border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Sua senha" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-lg transition-all flex justify-center items-center gap-2">
+                                <span>Entrar</span>
+                                <i class="ph-bold ph-arrow-right"></i>
                             </button>
                         </form>
-                        
-                        <div class="mt-6 text-center text-xs text-gray-400">
-                            <p>Versão 2.0 | © 2026</p>
-                        </div>
                     </div>
                 </div>
             `;
         }
 
-        function renderExtras() {
-            const totalExtras = state.extras.length;
-
-            return `
-                <div class="min-h-screen bg-gray-50 pb-24">
-                    <!-- Header -->
-                    <header class="bg-gradient-to-r from-blue-900 to-blue-700 text-white p-4 sticky top-0 z-30 shadow-lg no-print">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <h1 class="font-bold text-xl">Registro de Extras</h1>
-                                <p class="text-sm opacity-90">${state.supervisor.nome}</p>
-                            </div>
-                            <button onclick="handleLogout()" class="p-2 rounded-full hover:bg-white/20 transition-all">
-                                <i class="ph ph-sign-out text-2xl"></i>
-                            </button>
-                        </div>
-                        
-                        <!-- Contador -->
-                        <div class="mt-3 bg-white/10 rounded-lg p-3 backdrop-blur-sm text-center">
-                            <div class="text-3xl font-black">${totalExtras}</div>
-                            <div class="text-xs opacity-75">Extras Registrados</div>
-                        </div>
-                    </header>
-
-                    <!-- Formulário -->
-                    <main class="p-4 max-w-2xl mx-auto">
-                        <div class="bg-white rounded-xl shadow-lg p-6 mb-6 fade-in no-print">
-                            <div class="flex items-center gap-3 mb-6">
-                                <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                                    <i class="ph-fill ph-plus-circle text-2xl text-blue-600"></i>
-                                </div>
-                                <div>
-                                    <h2 class="font-bold text-xl text-gray-800">
-                                        ${state.editingIndex !== null ? 'Editar Extra' : 'Nova Extra'}
-                                    </h2>
-                                    <p class="text-sm text-gray-500">Preencha os dados abaixo</p>
-                                </div>
-                            </div>
-
-                            <form id="extra-form" onsubmit="event.preventDefault(); addExtra();" class="space-y-4">
-                                <!-- Colaborador com Autocomplete -->
-                                <div>
-                                    <label class="text-sm font-bold text-gray-700 block mb-2">
-                                        <i class="ph ph-user text-blue-600"></i> Colaborador *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="colaborador"
-                                        class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                        placeholder="Digite para buscar..."
-                                        autocomplete="off"
-                                        required
-                                    >
-                                </div>
-
-                                <!-- Data e Horário -->
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="text-sm font-bold text-gray-700 block mb-2">
-                                            <i class="ph ph-calendar text-blue-600"></i> Data *
-                                        </label>
-                                        <input 
-                                            type="date"
-                                            id="data"
-                                            value="${getCurrentDate()}"
-                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                            required
-                                        >
-                                    </div>
-                                    
-                                    <div>
-                                        <label class="text-sm font-bold text-gray-700 block mb-2">
-                                            <i class="ph ph-clock text-blue-600"></i> Horário *
-                                        </label>
-                                        <select 
-                                            id="horario"
-                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                            required
-                                        >
-                                            <option value="">Selecione...</option>
-                                            ${HORARIOS.map(h => `
-                                                <option value="${h.value}">${h.label}</option>
-                                            `).join('')}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <!-- Tipo -->
-                                <div>
-                                    <label class="text-sm font-bold text-gray-700 block mb-2">
-                                        <i class="ph ph-tag text-blue-600"></i> Tipo de Extra *
-                                    </label>
-                                    <select 
-                                        id="tipo"
-                                        onchange="handleTipoChange()"
-                                        class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                        required
-                                    >
-                                        <option value="">Selecione...</option>
-                                        ${TIPOS_EXTRA.map(t => `
-                                            <option value="${t.value}">${t.label}</option>
-                                        `).join('')}
-                                    </select>
-                                </div>
-
-                                <!-- Campo customizado para tipo OUTRO -->
-                                <div id="custom-tipo-field" style="display: none;">
-                                    <label class="text-sm font-bold text-gray-700 block mb-2">
-                                        <i class="ph ph-pencil text-blue-600"></i> Especifique o Tipo *
-                                    </label>
-                                    <input
-                                        type="text"
-                                        id="tipo-outro"
-                                        class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                        placeholder="Digite o tipo de extra"
-                                        autocomplete="off"
-                                    >
-                                </div>
-
-                                <!-- Campos Condicionais para Cobrimento -->
-                                <div id="cover-fields" style="display: none;" class="space-y-4 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-200">
-                                    <div>
-                                        <label class="text-sm font-bold text-gray-700 block mb-2">
-                                            <i class="ph ph-user-switch text-yellow-600"></i> Quem foi coberto? *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="cobriu"
-                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                            placeholder="Digite para buscar..."
-                                            autocomplete="off"
-                                        >
-                                    </div>
-                                    
-                                    <div>
-                                        <label class="text-sm font-bold text-gray-700 block mb-2">
-                                            <i class="ph ph-info text-yellow-600"></i> Motivo do Cobrimento
-                                        </label>
-                                        <select 
-                                            id="motivo"
-                                            onchange="handleMotivoChange()"
-                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                        >
-                                            <option value="">Selecione...</option>
-                                            ${MOTIVOS_COBRIMENTO.map(m => `
-                                                <option value="${m}">${m}</option>
-                                            `).join('')}
-                                        </select>
-                                    </div>
-
-                                    <!-- Campo customizado para motivo OUTRO -->
-                                    <div id="custom-motivo-field" style="display: none;">
-                                        <label class="text-sm font-bold text-gray-700 block mb-2">
-                                            <i class="ph ph-pencil text-yellow-600"></i> Especifique o Motivo *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            id="motivo-outro"
-                                            class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none"
-                                            placeholder="Digite o motivo"
-                                            autocomplete="off"
-                                        >
-                                    </div>
-                                </div>
-
-                                <!-- Observação -->
-                                <div>
-                                    <label class="text-sm font-bold text-gray-700 block mb-2">
-                                        <i class="ph ph-note text-blue-600"></i> Observação
-                                    </label>
-                                    <textarea 
-                                        id="observacao"
-                                        class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-600 outline-none resize-none"
-                                        rows="2"
-                                        placeholder="Informações adicionais (opcional)"
-                                    ></textarea>
-                                </div>
-
-                                <!-- Botões -->
-                                <div class="flex gap-3 pt-2">
-                                    ${state.editingIndex !== null ? `
-                                        <button 
-                                            type="button"
-                                            onclick="cancelEdit()"
-                                            class="flex-1 bg-gray-500 text-white font-bold py-3 rounded-lg hover:bg-gray-600 transition-all"
-                                        >
-                                            <i class="ph ph-x"></i> Cancelar
-                                        </button>
-                                    ` : ''}
-                                    <button 
-                                        type="submit"
-                                        class="flex-1 bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-all shadow-lg"
-                                    >
-                                        <i class="ph ph-${state.editingIndex !== null ? 'check' : 'plus'}"></i> 
-                                        ${state.editingIndex !== null ? 'Atualizar' : 'Adicionar'}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-
-                        <!-- Lista de Extras -->
-                        ${state.extras.length > 0 ? `
-                            <div class="space-y-3 print-container">
-                                <div class="flex items-center justify-between mb-4">
-                                    <h3 class="font-bold text-lg text-gray-800">
-                                        <i class="ph-fill ph-list text-blue-600"></i> 
-                                        Extras Registrados (${state.extras.length})
-                                    </h3>
-                                    <button 
-                                        onclick="copyExtrasToClipboard()"
-                                        class="no-print bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-all flex items-center gap-2 text-sm font-semibold"
-                                    >
-                                        <i class="ph ph-copy text-lg"></i>
-                                        Copiar p/ WhatsApp
-                                    </button>
-                                </div>
-                                
-                                ${state.extras.map((extra, index) => renderExtraCard(extra, index)).join('')}
-                            </div>
-                        ` : `
-                            <div class="text-center py-12 bg-white rounded-xl shadow-sm no-print">
-                                <i class="ph ph-clipboard-text text-6xl text-gray-300 mb-4"></i>
-                                <p class="text-gray-500">Nenhuma extra registrada ainda</p>
-                                <p class="text-sm text-gray-400 mt-2">Preencha o formulário acima para começar</p>
-                            </div>
-                        `}
-                    </main>
-
-                    <!-- Fixed Bottom Bar -->
-                    ${state.extras.length > 0 ? `
-                        <div class="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 p-4 shadow-lg no-print">
-                            <button 
-                                onclick="saveAllExtras()"
-                                ${state.isLoading ? 'disabled' : ''}
-                                class="w-full max-w-2xl mx-auto block bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
-                            >
-                                ${state.isLoading ? '<i class="ph ph-spinner animate-spin text-2xl"></i> SALVANDO...' : `<i class="ph ph-floppy-disk text-2xl"></i> SALVAR ${state.extras.length} REGISTRO(S)`}
-                            </button>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }
-
-        function renderExtraCard(extra, index) {
-            const horarioInfo = HORARIOS.find(h => h.value === extra.horario);
+        function getLayout(content) {
+            const isGestao = state.user.accessLevel === 'gestao';
             
             return `
-                <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-blue-500 slide-up print-container">
-                    <div class="flex items-start justify-between mb-3">
-                        <div class="flex-1">
-                            <h4 class="font-bold text-lg text-gray-800 mb-1">${extra.colaboradorNome}</h4>
-                            <div class="flex gap-2 flex-wrap mb-2">
-                                <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold">
-                                    ${extra.funcao}
-                                </span>
-                                <span class="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold">
-                                    ${extra.regime}
-                                </span>
-                            </div>
-                        </div>
-                        <div class="flex gap-2 no-print">
-                            <button 
-                                onclick="editExtra(${index})"
-                                class="p-2 rounded-lg bg-yellow-100 text-yellow-700 hover:bg-yellow-200 transition-all"
-                            >
-                                <i class="ph ph-pencil text-lg"></i>
-                            </button>
-                            <button 
-                                onclick="removeExtra(${index})"
-                                class="p-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-all"
-                            >
-                                <i class="ph ph-trash text-lg"></i>
-                            </button>
-                        </div>
-                    </div>
+                <div class="flex min-h-screen bg-gray-50">
+                    <!-- Sidebar Mobile Overlay -->
+                    ${state.sidebarOpen ? `<div class="fixed inset-0 bg-black/50 z-30 md:hidden" onclick="state.sidebarOpen=false; render()"></div>` : ''}
                     
-                    <div class="grid grid-cols-2 gap-3 text-sm">
-                        <div class="flex items-center gap-2">
-                            <i class="ph-fill ph-calendar text-blue-600"></i>
-                            <div>
-                                <div class="text-gray-500 text-xs">Data</div>
-                                <div class="font-semibold">${formatDate(extra.data)}</div>
+                    <!-- Sidebar -->
+                    <aside class="fixed md:sticky top-0 left-0 h-screen w-72 bg-white border-r border-gray-200 z-40 transform transition-transform duration-300 ${state.sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}">
+                        <div class="p-6 border-b border-gray-100 flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg">
+                                ${state.user.nome.charAt(0)}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-bold text-gray-900 truncate">${state.user.nome}</h3>
+                                <p class="text-xs text-gray-500">${isGestao ? 'Gestor' : `Turno ${state.user.letraTurno || '-'}`}</p>
                             </div>
                         </div>
-                        
-                        <div class="flex items-center gap-2">
-                            <i class="ph-fill ph-clock text-blue-600"></i>
-                            <div>
-                                <div class="text-gray-500 text-xs">Horário</div>
-                                <div class="font-semibold">${horarioInfo ? horarioInfo.label : extra.horario}</div>
+
+                        <nav class="p-4 space-y-2">
+                            <button onclick="navigateTo('novo-relatorio')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${state.view === 'novo-relatorio' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}">
+                                <i class="ph ph-plus-circle text-xl"></i>
+                                <span>Novo Relatório</span>
+                            </button>
+                            
+                            <button onclick="navigateTo('historico')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${state.view === 'historico' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}">
+                                <i class="ph ph-clock-counter-clockwise text-xl"></i>
+                                <span>Histórico</span>
+                            </button>
+                            
+                            ${isGestao ? `
+                            <button onclick="navigateTo('dashboard')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${state.view === 'dashboard' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}">
+                                <i class="ph ph-chart-pie-slice text-xl"></i>
+                                <span>Dashboard</span>
+                            </button>
+                            ` : ''}
+
+                            <div class="pt-8 mt-8 border-t border-gray-100">
+                                <button onclick="logout()" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-red-600 hover:bg-red-50">
+                                    <i class="ph ph-sign-out text-xl"></i>
+                                    <span>Sair</span>
+                                </button>
                             </div>
+                        </nav>
+                    </aside>
+
+                    <!-- Main Content -->
+                    <main class="flex-1 overflow-x-hidden">
+                        <header class="bg-white border-b border-gray-200 p-4 sticky top-0 z-20 flex items-center gap-4 md:hidden">
+                            <button onclick="state.sidebarOpen=true; render()" class="p-2 text-gray-600">
+                                <i class="ph ph-list text-2xl"></i>
+                            </button>
+                            <h1 class="font-bold text-lg text-gray-800">GPS Mecanizada</h1>
+                        </header>
+                        
+                        <div class="p-4 md:p-8 max-w-5xl mx-auto">
+                            ${content}
                         </div>
-                    </div>
-                    
-                    <div class="mt-3 pt-3 border-t border-gray-200">
-                        <div class="flex items-start gap-2 mb-2">
-                            <i class="ph-fill ph-tag text-green-600 mt-1"></i>
-                            <div class="flex-1">
-                                <div class="text-gray-500 text-xs">Tipo</div>
-                                <div class="font-semibold text-green-700">${extra.tipo}</div>
-                            </div>
-                        </div>
-                        
-                        ${extra.cobriuNome ? `
-                            <div class="flex items-start gap-2 mb-2 bg-yellow-50 p-2 rounded-lg">
-                                <i class="ph-fill ph-user-switch text-yellow-600 mt-1"></i>
-                                <div class="flex-1">
-                                    <div class="text-gray-500 text-xs">Cobriu</div>
-                                    <div class="font-semibold">${extra.cobriuNome}</div>
-                                    ${extra.motivo ? `<div class="text-xs text-gray-600 mt-1">Motivo: ${extra.motivo}</div>` : ''}
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        ${extra.observacao ? `
-                            <div class="flex items-start gap-2 mt-2">
-                                <i class="ph-fill ph-note text-gray-600 mt-1"></i>
-                                <div class="flex-1">
-                                    <div class="text-gray-500 text-xs">Observação</div>
-                                    <div class="text-sm text-gray-700">${extra.observacao}</div>
-                                </div>
-                            </div>
-                        ` : ''}
-                    </div>
+                    </main>
                 </div>
             `;
         }
 
-        // ============================================
-        // INICIALIZAÇÃO
-        // ============================================
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedSupervisor = localStorage.getItem('supervisor');
-            if (savedSupervisor) {
-                state.supervisor = JSON.parse(savedSupervisor);
-                loadColaboradores().then(() => {
-                    state.view = 'extras';
-                    render();
-                });
-            } else {
-                render();
+        function renderNovoRelatorio() {
+            const app = document.getElementById('app');
+            
+            if(!state.currentRelatorio) {
+                // Estado vazio
+                app.innerHTML = getLayout(`
+                    <div class="bg-white rounded-2xl shadow-sm p-12 text-center fade-in">
+                        <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <i class="ph-duotone ph-file-plus text-5xl text-blue-600"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">Começar Turno</h2>
+                        <p class="text-gray-500 mb-8 max-w-md mx-auto">Inicie um novo relatório para registrar as atividades, equipamentos e ocorrências do seu turno.</p>
+                        <button onclick="iniciarNovoRelatorio()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1">
+                            Iniciar Relatório
+                        </button>
+                    </div>
+                `);
+                return;
             }
-        });
+
+            const r = state.currentRelatorio;
+            
+            // Gerar HTML dos equipamentos
+            const equipamentosHTML = r.equipamentosOperando.map((eq, idx) => `
+                <div class="bg-white border border-gray-200 rounded-xl p-5 mb-4 shadow-sm slide-up relative group">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center gap-3">
+                            <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded-md">EQ ${idx + 1}</span>
+                            <h3 class="font-bold text-gray-800">Detalhes da Operação</h3>
+                        </div>
+                        <button onclick="removerEquipamento(${idx})" class="text-gray-400 hover:text-red-500 transition-colors p-1">
+                            <i class="ph-bold ph-trash text-lg"></i>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Equipamento *</label>
+                            <div class="relative">
+                                <i class="ph ph-truck absolute left-3 top-3 text-gray-400"></i>
+                                <select onchange="state.currentRelatorio.equipamentosOperando[${idx}].equipamento = this.value" class="w-full pl-9 border border-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none bg-white appearance-none">
+                                    <option value="">Selecione...</option>
+                                    ${state.equipamentos.map(e => `<option value="${e.placa}" ${eq.equipamento === e.placa ? 'selected' : ''}>${e.placa} - ${e.tipo}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Vaga *</label>
+                            <select onchange="state.currentRelatorio.equipamentosOperando[${idx}].vaga = this.value" class="w-full border border-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none bg-white">
+                                <option value="">Selecione...</option>
+                                ${state.vagas.map(v => `<option value="${v.nome}" ${eq.vaga === v.nome ? 'selected' : ''}>${v.nome}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Área de Atuação *</label>
+                            <input type="text" value="${eq.area}" onchange="state.currentRelatorio.equipamentosOperando[${idx}].area = this.value" class="w-full border border-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none" placeholder="Ex: Galpão A, Linha 3...">
+                        </div>
+                        
+                        <!-- Autocomplete Motorista -->
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Motorista</label>
+                            <input type="text" 
+                                id="motorista_input_${eq._tempId}" 
+                                value="${eq.motorista}" 
+                                class="w-full border border-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none" 
+                                placeholder="Digite para buscar...">
+                        </div>
+
+                         <!-- Autocomplete Operadores -->
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Operadores</label>
+                            <input type="text" value="${eq.operadores}" onchange="state.currentRelatorio.equipamentosOperando[${idx}].operadores = this.value" class="w-full border border-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none" placeholder="Nomes separados por vírgula">
+                        </div>
+                    </div>
+
+                    <!-- Trocas -->
+                    <div class="border-t border-gray-100 pt-3 mt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-orange-600 flex items-center gap-1">
+                                <i class="ph-bold ph-arrows-left-right"></i> Trocas/Ocorrências
+                            </span>
+                            <button onclick="adicionarTroca(${idx})" class="text-xs bg-orange-50 text-orange-600 px-2 py-1 rounded hover:bg-orange-100 font-semibold transition-colors">
+                                + Adicionar
+                            </button>
+                        </div>
+                        
+                        ${eq.trocas.map((tr, tIdx) => `
+                            <div class="bg-orange-50/50 rounded-lg p-3 mb-2 border border-orange-100 text-sm">
+                                <div class="flex justify-between mb-2">
+                                    <strong class="text-orange-800">Ocorrência ${tIdx + 1}</strong>
+                                    <button onclick="removerTroca(${idx}, ${tIdx})" class="text-red-500 hover:text-red-700">✕</button>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                                    <select onchange="state.currentRelatorio.equipamentosOperando[${idx}].trocas[${tIdx}].motivo = this.value" class="border border-orange-200 rounded p-1.5 w-full bg-white">
+                                        <option value="">Motivo...</option>
+                                        <option value="Manutenção Preventiva" ${tr.motivo === 'Manutenção Preventiva' ? 'selected' : ''}>Preventiva</option>
+                                        <option value="Manutenção Corretiva" ${tr.motivo === 'Manutenção Corretiva' ? 'selected' : ''}>Corretiva</option>
+                                        <option value="Avaria" ${tr.motivo === 'Avaria' ? 'selected' : ''}>Avaria</option>
+                                    </select>
+                                    <select onchange="state.currentRelatorio.equipamentosOperando[${idx}].trocas[${tIdx}].equipamentoNovo = this.value" class="border border-orange-200 rounded p-1.5 w-full bg-white">
+                                        <option value="">Novo Equip...</option>
+                                        ${state.equipamentos.map(e => `<option value="${e.placa}" ${tr.equipamentoNovo === e.placa ? 'selected' : ''}>${e.placa}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <input type="time" value="${tr.dataHora.slice(11, 16)}" onchange="state.currentRelatorio.equipamentosOperando[${idx}].trocas[${tIdx}].dataHora = state.currentRelatorio.data + 'T' + this.value" class="border border-orange-200 rounded p-1.5 w-full mb-2">
+                                <input type="text" placeholder="Obs..." value="${tr.observacao}" onchange="state.currentRelatorio.equipamentosOperando[${idx}].trocas[${tIdx}].observacao = this.value" class="border border-orange-200 rounded p-1.5 w-full">
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+
+            app.innerHTML = getLayout(`
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900">Novo Relatório</h2>
+                        <p class="text-sm text-gray-500">Preencha os dados do turno atual</p>
+                    </div>
+                    <div class="text-right hidden md:block">
+                        <div class="text-sm font-bold text-gray-900">${new Date().toLocaleDateString('pt-BR')}</div>
+                        <div class="text-xs text-gray-500">ID: ${r.id}</div>
+                    </div>
+                </div>
+
+                <div class="grid gap-6 max-w-4xl">
+                    <!-- Configurações Gerais -->
+                    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                         <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Data do Turno</label>
+                                <input type="date" value="${r.data}" onchange="state.currentRelatorio.data = this.value" class="w-full border border-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Letra Turno</label>
+                                <input type="text" value="${r.letraTurno}" readonly class="w-full bg-gray-100 border border-gray-300 rounded-lg p-2.5 text-gray-600">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lista Equipamentos -->
+                    <div>
+                        ${equipamentosHTML}
+                        
+                        <button onclick="adicionarEquipamento()" class="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-semibold hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2">
+                            <i class="ph-bold ph-plus"></i> Adicionar Outro Equipamento
+                        </button>
+                    </div>
+
+                    <!-- Obs -->
+                    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-2">Observações Gerais</label>
+                        <textarea rows="3" onchange="state.currentRelatorio.observacoes = this.value" class="w-full border border-gray-300 rounded-lg p-3 focus:border-blue-500 outline-none resize-none" placeholder="Alguma ocorrência geral importante?">${r.observacoes}</textarea>
+                    </div>
+
+                    <!-- Ações -->
+                    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 md:static md:bg-transparent md:border-0 md:p-0 z-20">
+                        <div class="flex gap-3 max-w-4xl mx-auto">
+                            <button onclick="if(confirm('Cancelar e perder dados?')) { state.currentRelatorio=null; renderNovoRelatorio(); }" class="flex-1 bg-gray-200 text-gray-700 font-bold py-3 rounded-xl hover:bg-gray-300 transition-colors">
+                                Cancelar
+                            </button>
+                            <button onclick="salvarRelatorio()" class="flex-[2] bg-blue-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-blue-700 transition-transform active:scale-95 flex justify-center items-center gap-2">
+                                <i class="ph-bold ph-paper-plane-right"></i> Salvar Relatório
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            // Inicializar Autocompletes após renderizar
+            r.equipamentosOperando.forEach((eq, idx) => {
+                setupAutocomplete(`motorista_input_${eq._tempId}`, state.colaboradores, (item) => {
+                    state.currentRelatorio.equipamentosOperando[idx].motorista = item.nome;
+                });
+            });
+        }
+
+        // ============================================
+        // AUXILIARES
+        // ============================================
+
+        async function fetchAPI(action, params = {}) {
+            const url = new URL(API_URL);
+            url.searchParams.append('action', action);
+            Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+            
+            const response = await fetch(url);
+            return await response.json();
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            
+            showLoading(true, "Autenticando...");
+            try {
+                const res = await fetchAPI('login', { username: u, password: p });
+                if (res.success) {
+                    localStorage.setItem('user_session', JSON.stringify(res.supervisor));
+                    state.user = res.supervisor;
+                    initApp();
+                } else {
+                    showToast(res.error, 'error');
+                }
+            } catch(err) {
+                showToast("Erro de conexão", 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('user_session');
+            location.reload();
+        }
+
+        function showLoading(show, text) {
+            const el = document.getElementById('loading');
+            const txt = document.getElementById('loading-text');
+            if (show) {
+                el.classList.remove('hidden');
+                txt.textContent = text || 'Carregando...';
+            } else {
+                el.classList.add('hidden');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const div = document.createElement('div');
+            const colors = { success: 'bg-green-500', error: 'bg-red-500', warning: 'bg-orange-500', info: 'bg-blue-600' };
+            div.className = `fixed top-5 right-5 ${colors[type]} text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 slide-up`;
+            div.innerHTML = `
+                <i class="ph-bold ${type === 'success' ? 'ph-check-circle' : type === 'error' ? 'ph-warning-circle' : 'ph-info'} text-xl"></i>
+                <span class="font-medium">${message}</span>
+            `;
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 4000);
+        }
+
+        // Exibe o histórico de relatórios
+        async function renderHistorico() {
+            const app = document.getElementById('app');
+            app.innerHTML = getLayout(`
+                <div class="flex items-center justify-center h-64">
+                    <i class="ph ph-spinner ph-spin text-4xl text-blue-600"></i>
+                </div>
+            `);
+
+            const date = new Date().toISOString().split('T')[0];
+            const res = await fetchAPI('getRelatorios', { supervisor: state.user.nome, date: date });
+
+            let html = '';
+            if(res.success && res.relatorios.length > 0) {
+                html = res.relatorios.map(r => `
+                    <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-4">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 class="font-bold text-gray-900">Relatório de Turno ${r.letraTurno}</h3>
+                                <p class="text-sm text-gray-500">${new Date(r.data + 'T12:00:00').toLocaleDateString()}</p>
+                            </div>
+                            <button onclick="copiarWhatsApp('${btoa(JSON.stringify(r))}')" class="text-green-600 bg-green-50 hover:bg-green-100 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                <i class="ph-bold ph-whatsapp-logo"></i> Copiar
+                            </button>
+                        </div>
+                        <div class="space-y-2">
+                            ${r.equipamentosOperando.map(e => `
+                                <div class="text-sm border-l-4 border-blue-500 pl-3 py-1">
+                                    <span class="font-bold text-gray-800">${e.equipamento}</span>
+                                    <span class="text-gray-500"> - ${e.area}</span>
+                                    ${e.trocas && e.trocas.length ? `<span class="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full ml-2">${e.trocas.length} Ocorrências</span>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                html = `<div class="text-center text-gray-500 py-12">Nenhum relatório encontrado hoje.</div>`;
+            }
+
+            const appContent = document.getElementById('app');
+            appContent.innerHTML = getLayout(`
+                <h2 class="text-2xl font-bold text-gray-900 mb-6">Histórico (Hoje)</h2>
+                <div class="max-w-3xl">${html}</div>
+            `);
+        }
+
+        // Função para formatar mensagem do WhatsApp
+        function copiarWhatsApp(encodedData) {
+            const r = JSON.parse(atob(encodedData));
+            let text = `*RELATÓRIO DE TURNO - ${r.letraTurno}*\n`;
+            text += `📅 ${new Date(r.data + 'T12:00:00').toLocaleDateString()}\n`;
+            text += `👤 Sup: ${r.supervisor}\n\n`;
+            
+            r.equipamentosOperando.forEach(eq => {
+                text += `🚛 *${eq.equipamento}*\n`;
+                text += `📍 ${eq.area} | ${eq.vaga}\n`;
+                if(eq.motorista) text += `👨‍✈️ ${eq.motorista}\n`;
+                
+                if(eq.trocas && eq.trocas.length) {
+                    eq.trocas.forEach(tr => {
+                        text += `⚠️ *${tr.motivo}* -> ${tr.equipamentoNovo || 'S/EQ'}\n`;
+                    });
+                }
+                text += `\n`;
+            });
+            
+            if(r.observacoes) text += `📝 *Obs:* ${r.observacoes}\n`;
+
+            navigator.clipboard.writeText(text);
+            showToast('Copiado para a área de transferência', 'success');
+        }
+
+        // Renderiza o Dashboard (Apenas Gestão)
+        async function renderDashboard() {
+            const app = document.getElementById('app');
+            app.innerHTML = getLayout(`<div class="text-center p-12"><i class="ph ph-spinner ph-spin text-4xl"></i></div>`);
+            
+            // Simples chamada ao backend para pegar dados crus
+            // A inteligência do gráfico fica aqui no frontend
+            const date = new Date().toISOString().split('T')[0];
+            const res = await fetchAPI('getDashboard', { date });
+            
+            if(!res.success) return showToast('Erro ao carregar dashboard', 'error');
+            const data = res.data;
+
+            // Preparar dados para o Chart.js
+            const appContent = document.getElementById('app');
+            
+            // Aqui eu crio uma estrutura de dashboard moderna
+            appContent.innerHTML = getLayout(`
+                <h2 class="text-2xl font-bold text-gray-900 mb-6">Dashboard Operacional</h2>
+                
+                <!-- KPIs -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
+                        <p class="text-xs text-gray-500 font-bold uppercase">Total Equipamentos</p>
+                        <p class="text-3xl font-bold text-gray-800">${data.totalEquipamentos}</p>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-orange-500">
+                        <p class="text-xs text-gray-500 font-bold uppercase">Trocas Realizadas</p>
+                        <p class="text-3xl font-bold text-gray-800">${data.totalTrocas}</p>
+                    </div>
+                     <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
+                        <p class="text-xs text-gray-500 font-bold uppercase">Relatórios Entregues</p>
+                        <p class="text-3xl font-bold text-gray-800">${data.totalRelatorios}</p>
+                    </div>
+                </div>
+
+                <!-- Gráficos -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-xl shadow-sm h-80">
+                        <h3 class="font-bold text-gray-700 mb-4">Motivos de Troca</h3>
+                        <canvas id="chartMotivos"></canvas>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm h-80">
+                        <h3 class="font-bold text-gray-700 mb-4">Top Equipamentos</h3>
+                        <canvas id="chartEquipamentos"></canvas>
+                    </div>
+                </div>
+            `);
+
+            // Inicializar Gráficos
+            setTimeout(() => {
+                // Gráfico de Pizza (Motivos)
+                const ctxMotivos = document.getElementById('chartMotivos');
+                if(ctxMotivos && data.motivosTrocas) {
+                    new Chart(ctxMotivos, {
+                        type: 'doughnut',
+                        data: {
+                            labels: Object.keys(data.motivosTrocas),
+                            datasets: [{
+                                data: Object.values(data.motivosTrocas),
+                                backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981'],
+                                borderWidth: 0
+                            }]
+                        },
+                        options: { maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+                    });
+                }
+
+                // Gráfico de Barras (Top Equipamentos)
+                const ctxEq = document.getElementById('chartEquipamentos');
+                if(ctxEq && data.equipamentosMaisUsados) {
+                    new Chart(ctxEq, {
+                        type: 'bar',
+                        data: {
+                            labels: data.equipamentosMaisUsados.map(i => i.equipamento),
+                            datasets: [{
+                                label: 'Utilizações',
+                                data: data.equipamentosMaisUsados.map(i => i.quantidade),
+                                backgroundColor: '#3b82f6',
+                                borderRadius: 4
+                            }]
+                        },
+                        options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+                    });
+                }
+            }, 100);
+        }
+
     </script>
 </body>
 </html>
